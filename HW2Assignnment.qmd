@@ -1,0 +1,392 @@
+---
+title: "Faaz Arshad- HW2Assignment"
+format: html
+editor: visual
+name: Faaz Arshad
+---
+
+# Mapping Severe Weather Events
+
+```{r}
+## Run / Install before executing slides
+ 
+# Load packages.
+# packages <-
+#   c(
+#     "devtools",
+#     "knitr",
+#     "tidyverse",
+#     "broom",
+#     "DT",
+#     "ggmap",
+#     "ggthemes",
+#     "maps",
+#     "statebins",
+#     "plyr",
+#     "readr",
+#     "mapproj",
+#     "RColorBrewer",
+#     "stringr",
+#     "scales",
+#     "tidyverse",
+#     "readxl",
+#     "statebins",
+#     "treemapify",
+#     "RJSONIO",
+#     "XML",
+#     "RCurl",
+#     "xaringan",
+#     "bindrcpp",
+#     "tmap",
+#     "rnaturalearth"
+#   )
+# 
+# 
+# packages <- lapply(packages, FUN = function(x) {
+#   if(!require(x, character.only = TRUE)) {
+#     install.packages(x)
+#   library(x, character.only = TRUE)
+#   }
+# }
+# )
+
+# devtools::install_github("hrbrmstr/cdcfluview")
+# devtools::install_github("hrbrmstr/ggcounty")
+# devtools::install_github("cwickham/geospatial")
+# devtools::install_github("UrbanInstitute/urbnmapr")
+# devtools::install_github("rich-iannone/DiagrammeR")
+
+
+
+```
+
+```{r}
+library(tidyverse)
+library(RColorBrewer)
+library(ggthemes)
+library(urbnmapr)
+library(usmap)
+library(dplyr)
+library(viridis)
+library(ggplot2)  
+library(maps)     
+```
+
+Reading the original Data
+
+```{r}
+library(readr)
+storms <- read_csv("C:/Users/faaz2/Downloads/storms.csv")
+```
+
+## Overview
+
+I am going to investigate severe weather events and their impact. Using data about the locations of weather events occurring in the United States, I want to better understand and visualize their spatial distribution.
+
+#### Damage from the Storms
+
+I created 2 different types of visualizations to illustrate state level and county level choropleth maps of the United States. Choropleth maps are maps in which areas are shaded or patterned in proportion to the measurement of the statistical variable being displayed on the map. I also know that Choropleth maps are visually appealing, but can also be misleading. These maps are also dense displays of information. A main point can be made accessible on first view, with deeper exploration available for the interested viewer.
+
+#### Problem 1
+
+#### State Level Chloropleth Maps
+
+1a) Provide a static state-level choropleth map of the United States visualizing where monetary damage is recorded(by using the sum of the variables damage property USD and damage crops USD).
+
+In order to produce the chloropleth maps, from the storms dataset, I had to calculate the sum of DAMAGE_CROPS_USD and DAMAGE_PROPERTY_USD.
+
+```{r}
+storms$sum <- storms$DAMAGE_CROPS_USD + storms$DAMAGE_PROPERTY_USD
+head(storms$sum)
+```
+
+Removed the NA variables in the sum column. The data should now contain 293, 738 observations and 51 variables.
+
+```{r}
+storms <- storms %>%
+  drop_na(sum)
+```
+
+```{r}
+us.states <- ggplot2::map_data("state")
+```
+
+Removed irrelevant columns and downsized it to 35 columns.
+
+```{r}
+subdata <- subset(storms, select = -c(TOR_OTHER_WFO, TOR_OTHER_CZ_STATE,TOR_OTHER_CZ_FIPS,TOR_OTHER_CZ_NAME,CATEGORY,TOR_F_SCALE,TOR_LENGTH,TOR_WIDTH,WFO,YEAR,MONTH_NAME,SOURCE,MAGNITUDE,MAGNITUDE_TYPE,FLOOD_CAUSE))
+```
+
+I added a ID column.
+
+```{r}
+subdata1 <- cbind(ID = 1:nrow(subdata),subdata)
+head(subdata1$ID)
+```
+
+```{r}
+us.states1 <- cbind(ID = 1:nrow(us.states),us.states)
+```
+
+Merged two data sets by ID and state.
+
+```{r}
+combined1 <- merge(us.states1,subdata1, x.by = "ID", y.by = "STATE")
+head(combined1$sum)
+```
+
+I aggregated the data.
+
+```{r}
+state_damages <- subdata1 %>%
+  group_by(STATE) %>%
+  dplyr::summarize(total_damage = sum(sum, na.rm = TRUE)) %>%
+  mutate(state_lower = tolower(STATE))
+
+us_states_data <- left_join(us.states1, state_damages, by = c("region" = "state_lower"))
+```
+
+```{r}
+us_states_data$abb <- state.abb[match(us_states_data$region, tolower(state.name))]
+
+head(us_states_data$abb)
+```
+
+My map output on ggplot.
+
+```{r}
+stormmap <- ggplot() +
+  geom_polygon(data = us_states_data, aes(x = long, y = lat, group = group, fill = total_damage), color = "purple", size = 0.25) +
+  labs(title = "Total Damage in the United States By State") +
+  theme_minimal() +
+  scale_fill_continuous(name = "Total Damage", low = "ivory", high = "brown")
+
+stormmap
+```
+
+Added abbreviations to states on the map.
+
+```{r}
+
+state.abb
+state.name
+adding_abbreviations <- data.frame (region=tolower(state.name), long=state.center$x, lat = state.center$y)
+
+adding_abbreviations$abb<- state.abb[match(adding_abbreviations$region, tolower(state.name))]
+
+
+stormmap2 <- stormmap + with (adding_abbreviations, annotate (geom = "text", x = long, y = lat, label = abb, color = "black"))
+
+stormmap2
+
+```
+
+#### County Chloropleth Maps
+
+1b) Provide a static county-level choropleth map of the United States visualizing where monetary damage is recorded (by using the sum of the variables damage property USD and damage crop USD.
+
+Calculated sum.
+
+```{r}
+storms$sum1 <-storms$DAMAGE_CROPS_USD+storms$DAMAGE_PROPERTY_USD
+head(storms$sum1)
+```
+
+```{r}
+
+uscounties_sf <- get_urbn_map("counties", sf = TRUE)
+str(uscounties_sf)
+```
+
+```{r}
+countyS <- storms %>%
+  filter(CZ_TYPE == "C")%>%
+  group_by(CZ_NAME) %>%
+  summarise(damage = sum(DAMAGE_PROPERTY_USD, na.rm = TRUE) + sum(DAMAGE_CROPS_USD,na.rm = TRUE))
+head(countyS)
+  
+```
+
+Below is the code to produce the county-level plot for 1b.
+
+```{r}
+# ggplot()+
+#   geom_sf(data = uscounties_sf,aes(fill = countyS$damage, color = "#ffffff"))+
+#   guides (color = FALSE)+
+#   labs (title = "U.S. Total Damage by County")
+  
+
+```
+
+![](images/clipboard-3323448001.png)
+
+#### Density Map
+
+1c) Provide a map, in which you highlight the density of sever events by focusing on the variables of injuries and or deaths associated with storms. Discuss briefly which of the two approaches provide a better visual summer of the distribution of the destructive effects of storms.
+
+Calculated the sum for injuries.
+
+```{r}
+combined1$suminjuries <- combined1$INJURIES_DIRECT + combined1$INJURIES_INDIRECT
+head(combined1$suminjuries)
+```
+
+Calculated the sum for deaths.
+
+```{r}
+combined1$sumdeaths <- combined1$DEATHS_DIRECT + combined1$DEATHS_INDIRECT
+head(combined1$sumdeaths)
+```
+
+Used API key.
+
+```{r}
+
+library(ggmap)
+register_google(key = "AIzaSyAyd2Y9c8XGkV3G5FGk-M7Tlk5UyPLd7gE", write = TRUE)
+
+```
+
+```{r}
+map_US <- get_map (location = "united states", zoom = 4)
+
+map_US <- ggmap (map_US)
+
+```
+
+Created density map and customized it with a legend.
+
+```{r}
+map_US+
+ stat_density2d(data = combined1, geom = "polygon", aes(x = long, y = lat, fill = ..level.., alpha = ..level..)) + 
+  scale_alpha (guide = "none")+
+  scale_fill_gradient(low = "yellow", high = "red")+
+  ggtitle("Density of Deaths Associated with Storms Across the United States")+
+  theme(legend.position = "right")
+```
+
+Both the cloropleth and density maps have their own advantages and disadvantages. Considering their differences, I believe the cloropleth state-level map does the best job of displaying damages across the states. The cloropleth map demonstrates the sum of damage property USD and damage crops USD, while the density map shows the density of deaths of an individual. Therefore, if one is interested in exploring a visualization regarding crops, property, and money, I would choose map 1a, but if one is interested in exploring density of deaths, then map 1c may be the right choice.
+
+#### Problem 2
+
+#### Interactive Map of Severe Weather Events
+
+2a) Interactive Map of Severe Weather Events Create a leaflet map of the United States showing the location of severe weather events which result in at least one death (hint: use EVENT_TYPE). Ignore locations that fall outside the United States. Provide at least three pieces of information on the incident in a popup.
+
+The first step I did was to run the leaflet package.
+
+```{r}
+library(leaflet)
+```
+
+Using the dplyr package that I installed in the beginning of this document, I was able to use storms as the data frame input. I used the filter method within the dplyr package to get the sum of deaths direct and deaths indirect columns which contain more than 1 death. I simplified the data to contain weather events that impacted more than 1 death.
+
+```{r}
+major <- storms %>%
+  filter(DEATHS_DIRECT + DEATHS_INDIRECT >= 1) %>%
+  filter(!is.na(BEGIN_LAT) & !is.na(BEGIN_LON))
+```
+
+Next, I decided to create a new object called spatial view and assign it to leaflet(). Then I searched on the internet to find out about addProviderTile() method.
+
+Link: <https://www.rdocumentation.org/packages/leaflet/versions/2.2.1/topics/addProviderTiles>\
+This method adds a tile layer from a known map provider. The info for that is down below in the link as well.
+
+Link: <https://rstudio.github.io/leaflet/articles/basemaps.html>
+
+Once I got the base map of the United States, I searched for a method that I can use for interactivity and view placement. I found the setView(). Within the set View method you can adjust the longitude, latitude, and zoom of your placement in the US (should work out of US too). After that I wanted to add markers on spatial view map, so I did: spatial \<- spatial view %\>%. Right below that I applied the addMarkers(), where I assigned my data to be equal to major, the lng, and lat. Within the method I included the paste() where it allowed me to showcase the information when clicking on the marker. Valuable information, such as state, event type, deaths, and year.
+
+```{r}
+spatialview <- leaflet() %>%
+  addProviderTiles(providers$CartoDB.PositronNoLabels) %>%
+  setView(lng = -98.3, lat = 40.00, zoom = 6)
+spatialview <- spatialview %>%
+  addMarkers(data = major, lng = ~BEGIN_LON, lat = ~BEGIN_LAT, label = ~paste0(STATE, ":", "Event Type, ", EVENT_TYPE, ": ", "Deaths, ", DEATHS_DIRECT+ DEATHS_INDIRECT,  ": ", "Year, ", YEAR))
+spatialview
+```
+
+#### Color by Type of Weather Event
+
+2b) Start with the previous map. Now, distinguish the markers of the weather event locations by event type what kind of weather event occurred. If there are too many categories, collapse some categories. Choose an appropriate coloring scheme to map the locations by type of weather event. Add a legend informing the user about the color scheme. Also make sure that the information about the type of weather event is now contained in the popup information. Show this map.
+
+Through the code below, I was able to see the data set.
+
+```{r}
+view(major)
+```
+
+Once I viewed the data set, I wanted to see how many event types were in the data set. Too see the distribution, I used the table method to particularly view the number of even type that is present.
+
+```{r}
+table(major$EVENT_TYPE)
+```
+
+After better understanding the data, I ran the leaflet library once again.
+
+```{r}
+library(leaflet)
+```
+
+Then, I repeated the same process from 2a). Using the dplyr package that I installed in the beginning of this document, I was able to use storms as the data frame input. I used the filter method within the dplyr package to get the sum of deaths direct and deaths indirect columns which contain more than 1 deaths. I simplified the data to contain weather events that impacted more than 1 death.
+
+```{r}
+major <- storms %>%
+  filter(DEATHS_DIRECT + DEATHS_INDIRECT >= 1) %>%
+  filter(!is.na(BEGIN_LAT) & !is.na(BEGIN_LON))
+```
+
+This time, to make it easy for myself, I decided to switch up my marker to a circle marker. I found out about the RColorbrewer package through this link:\
+<https://r-graph-gallery.com/38-rcolorbrewers-palettes.html>
+
+When you click the link, you can see on the right side a column of different color palettes to choose from. I chose the Set3 palette because I needed a palette that had at least 10 colors to associate with the event types. In Thomas Brombar's PowerPoint, Set1 was used. I originally used Set1 as well, but it did not work because it was limited to 9 colors. Therefore, I checked the RColorBrewers package \[check link above\] and selected Set3. I then continue to use spatialview assigned to leaflet(). I re implement the addProviderTiles() to adds a tile layer from a known map provider. Link to this information is in the previous problem, 2a. I inserted the addCircleMarkers information again. I looked at documentation for addCircleMarkers to identify which arguments are needed to color each circle. I set the fillColor argument to equal each event type by a distinct color in the palette Set3. Also, I set fillOpacity to be 1, so that the colors are easily visible and distinguishable. I also used the weight and stroke arguments to customize the size and outline of the circle markers.
+
+```{r}
+
+library (RColorBrewer)
+pal = colorFactor(palette = "Set3", domain = major$EVENT_TYPE)
+color_event = pal (major$EVENT_TYPE)
+
+spatialview <- leaflet(major) %>%
+  addProviderTiles(providers$CartoDB.PositronNoLabels) %>%
+  setView(lng = -98.3, lat = 40.00, zoom = 6) %>%
+  addCircleMarkers(data = major,lng = ~BEGIN_LON,lat = ~BEGIN_LAT,label = ~paste0(
+  STATE, ":", "Event Type, ", EVENT_TYPE, ": ", "Deaths, ", DEATHS_DIRECT + DEATHS_INDIRECT, ": ", "Year, ", YEAR), fillColor = color_event, fillOpacity = 1, weight = 1, stroke = FALSE) %>%
+  addLegend(pal = pal, values = ~major$EVENT_TYPE, position = "bottomleft", title = "Event Types")
+spatialview
+
+```
+
+#### Clustering
+
+2c) Add marker clustering, so that zooming in will reveal the individual locations but the zoomed out map only shows the clusters. Show the map with clusters.
+
+I repeated the same processes and methods from the previous parts, but the only thing that has changed is applying the clustering method. To acquire the clustering on my map, I used clusterOptions = markerClusterOptions() this allows me to activate the addcirclemarkers function that is part of leaflet package.
+
+I found this method within the Link: <https://rstudio.github.io/leaflet/articles/markers.html>
+
+```{r}
+library(leaflet)
+```
+
+```{r}
+major <- storms %>%
+  filter(DEATHS_DIRECT + DEATHS_INDIRECT >= 1) %>%
+  filter(!is.na(BEGIN_LAT) & !is.na(BEGIN_LON))
+```
+
+```{r}
+
+library (RColorBrewer)
+pal = colorFactor(palette = "Set3", domain = major$EVENT_TYPE)
+color_event = pal (major$EVENT_TYPE)
+
+spatialview <- leaflet(major) %>%
+  addProviderTiles(providers$CartoDB.PositronNoLabels) %>%
+  setView(lng = -98.3, lat = 40.00, zoom = 6) %>%
+  addCircleMarkers(data = major,lng = ~BEGIN_LON,lat = ~BEGIN_LAT,label = ~paste0(
+  STATE, ":", "Event Type, ", EVENT_TYPE, ": ", "Deaths, ", DEATHS_DIRECT + DEATHS_INDIRECT, ": ", "Year, ", YEAR), fillColor = color_event, fillOpacity = 1, weight = 1, stroke = FALSE, , clusterOptions = markerClusterOptions()) %>%
+  addLegend(pal = pal, values = ~major$EVENT_TYPE, position = "bottomleft", title = "Event Types")
+spatialview
+```
+
+#### The End
